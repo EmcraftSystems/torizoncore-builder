@@ -16,6 +16,7 @@ from tcbuilder.backend.common import \
     (set_output_ownership, check_licence_acceptance, run_with_loading_animation, open_disk_image,
      get_tar_compress_program_options, DOCKER_BUNDLE_TARNAME, TAR_EXT_TO_PROGRAM,
      OSTREE_SOTA_DIR_PATH, DEFAULT_RAW_SECTOR_SIZE)
+from tcbuilder.backend.deploy import grow_last_partition
 from tcbuilder.errors import InvalidStateError, InvalidDataError, TorizonCoreBuilderError
 
 log = logging.getLogger("torizon." + __name__)
@@ -360,23 +361,29 @@ def combine_raw_image(image_path, bundle_dir, output_path, rootfs_label, force,
         extra_disk_size_kb += int((req_space_kb - root_avail_kb) * DISK_INCREASE_FACTOR)
 
     log.info(f"Output disk will be increased by {extra_disk_size_kb/1024:.2f} MiB")
-    subprocess.check_output(["truncate", "-s", f"+{extra_disk_size_kb}K", output_path])
 
-    tmp_image = None
-    if output_path == image_path:
-        # The build command uses in-place modification.
-        # virt-resize doesn't support that, so we need to create a temporary copy.
-        tmp_image = output_path + ".not_bundled"
-        log.debug("Copying '%s' -> '%s' for virt-resize.", output_path, tmp_image)
-        shutil.copyfile(output_path, tmp_image)
-        image_path = tmp_image
+    if sector_size == DEFAULT_RAW_SECTOR_SIZE:
+        subprocess.check_output(["truncate", "-s", f"+{extra_disk_size_kb}K", output_path])
 
-    try:
-        expand_disk_partition(image_path, root_partition, output_path)
-    finally:
-        if tmp_image and os.path.isfile(tmp_image):
-            log.debug("Deleting '%s'", tmp_image)
-            os.remove(tmp_image)
+        tmp_image = None
+        if output_path == image_path:
+            # The build command uses in-place modification.
+            # virt-resize doesn't support that, so we need to create a temporary copy.
+            tmp_image = output_path + ".not_bundled"
+            log.debug("Copying '%s' -> '%s' for virt-resize.", output_path, tmp_image)
+            shutil.copyfile(output_path, tmp_image)
+            image_path = tmp_image
+
+        try:
+            expand_disk_partition(image_path, root_partition, output_path)
+        finally:
+            if tmp_image and os.path.isfile(tmp_image):
+                log.debug("Deleting '%s'", tmp_image)
+                os.remove(tmp_image)
+    else:
+        # virt-resize drives libguestfs at the default 512-byte sector size and
+        # cannot open a 4Kn disk, so grow the image with libguestfs directly.
+        grow_last_partition(output_path, extra_disk_size_kb, sector_size, root_partition)
 
     with open_disk_image(output_path, delete_on_error=delete_on_error,
                          sector_size=sector_size) as gfs:
