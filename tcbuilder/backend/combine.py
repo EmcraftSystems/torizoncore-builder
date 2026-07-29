@@ -384,6 +384,7 @@ def combine_raw_image(image_path, bundle_dir, output_path, rootfs_label, force,
         # cannot open a 4Kn disk, so grow the image with libguestfs directly.
         # Local import: deploy.py's own import chain re-enters kernel.py before
         # it finishes initializing if this is hoisted to module level.
+        # pylint: disable-next=import-outside-toplevel
         from tcbuilder.backend.deploy import grow_last_partition
         grow_last_partition(output_path, extra_disk_size_kb, sector_size, root_partition)
 
