@@ -296,7 +296,8 @@ def combine_raw_image(image_path, bundle_dir, output_path, rootfs_label, force,
     """
     Combine a container bundle to a raw disk image by copying its contents to the image root
     filesystem. If the size of the container bundle exceeds the available space in root,
-    then the disk image will be resized beforehand.
+    then the disk image will be resized beforehand: via virt-resize at the default 512-byte
+    sector size, or via grow_last_partition() directly for a non-512 sector_size.
 
     :param image_path: Path of the input raw disk image.
     :param bundle_dir: Path of the container bundle directory.
