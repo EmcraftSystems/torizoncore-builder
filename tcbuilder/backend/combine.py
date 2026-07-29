@@ -16,7 +16,6 @@ from tcbuilder.backend.common import \
     (set_output_ownership, check_licence_acceptance, run_with_loading_animation, open_disk_image,
      get_tar_compress_program_options, DOCKER_BUNDLE_TARNAME, TAR_EXT_TO_PROGRAM,
      OSTREE_SOTA_DIR_PATH, DEFAULT_RAW_SECTOR_SIZE)
-from tcbuilder.backend.deploy import grow_last_partition
 from tcbuilder.errors import InvalidStateError, InvalidDataError, TorizonCoreBuilderError
 
 log = logging.getLogger("torizon." + __name__)
@@ -383,6 +382,9 @@ def combine_raw_image(image_path, bundle_dir, output_path, rootfs_label, force,
     else:
         # virt-resize drives libguestfs at the default 512-byte sector size and
         # cannot open a 4Kn disk, so grow the image with libguestfs directly.
+        # Local import: deploy.py's own import chain re-enters kernel.py before
+        # it finishes initializing if this is hoisted to module level.
+        from tcbuilder.backend.deploy import grow_last_partition
         grow_last_partition(output_path, extra_disk_size_kb, sector_size, root_partition)
 
     with open_disk_image(output_path, delete_on_error=delete_on_error,
