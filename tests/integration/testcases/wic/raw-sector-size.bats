@@ -10,20 +10,27 @@ RSS_SYNTH_512=rss_synth_512.img
 # combine's 98%-full growth path for the "hello" bundle, without landing on
 # the free-space-exactly-zero case (a ZeroDivisionError in combine.py itself).
 RSS_SLACK_4K_KB=132400
-# No ratio target for the 512 case (R4 only proves the synthesis helper
+# No ratio target for the 512 case (this only proves the synthesis helper
 # itself is sector-size-agnostic) - a generous fixed margin is fine here.
 RSS_SLACK_512_KB=204800
 
 # Builds a synthetic raw disk at $1, at sector size $2 (512 or 4096), sized
-# to $3 KB, and copies the already-unpacked $DEFAULT_WIC_IMAGE sysroot into
-# a fresh "otaroot" ext4 partition on it. Mirrors write_rootfs_to_raw_image()'s
-# own primitives (mkfs ext4, set-label otaroot, copy-in) so the disk this test
-# builds is exactly what the code under test later expects to open.
+# to at least $3 KB, and copies the already-unpacked $DEFAULT_WIC_IMAGE
+# sysroot into a fresh "otaroot" ext4 partition on it. Mirrors
+# write_rootfs_to_raw_image()'s own primitives (mkfs ext4, set-label
+# otaroot, copy-in) so the disk this test builds is exactly what the code
+# under test later expects to open.
 build-synth-raw-image() {
     local out="$1"
     local sector="$2"
     local size_kb="$3"
-    local total_sectors=$(( size_kb * 1024 / sector ))
+    # Round the byte size up to a whole sector - size_kb*1024 is not
+    # guaranteed to be a sector multiple (sysroot_kb comes from "du -s",
+    # not a fixed constant), and guestfish/qemu expect a sector-aligned
+    # disk. Mirrors grow_last_partition()'s own rounding (deploy.py:337).
+    local total_bytes=$(( size_kb * 1024 ))
+    total_bytes=$(( (total_bytes + sector - 1) / sector * sector ))
+    local total_sectors=$(( total_bytes / sector ))
     # 33 LBAs (512-byte) reserved for the GPT backup header, converted to
     # this disk's own sector size - grow_last_partition's own calculation
     # (deploy.py:355).
@@ -39,13 +46,13 @@ build-synth-raw-image() {
     # "lost+found" the same way.
     local copy_in_ops=""
     local entry
-    for entry in $(torizoncore-builder-shell "ls /storage/sysroot"); do
+    while IFS= read -r entry; do
         [ "$entry" = "lost+found" ] && continue
         copy_in_ops+=" copy-in /storage/sysroot/$entry / :"
-    done
+    done < <(torizoncore-builder-shell "ls /storage/sysroot")
 
     rm -f "$out"
-    torizoncore-builder-shell "truncate -s ${size_kb}K $out"
+    torizoncore-builder-shell "truncate -s $total_bytes $out"
     torizoncore-builder-shell "guestfish $blocksize_opt -a $out -- \
         run : \
         part-init /dev/sda gpt : \
@@ -61,7 +68,7 @@ setup_file() {
     torizoncore-builder-clean-storage
     torizoncore-builder images --remove-storage unpack $DEFAULT_WIC_IMAGE
 
-    # D3: size the 4Kn disk tightly to the actual unpacked content, measured
+    # Size the 4Kn disk tightly to the actual unpacked content, measured
     # here rather than assumed, so the margin does not silently drift if the
     # upstream fixture's size changes.
     local sysroot_kb
