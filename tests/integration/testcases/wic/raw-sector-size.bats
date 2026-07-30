@@ -106,12 +106,19 @@ teardown_file() {
 }
 
 @test "raw sector size: combine grows a 4Kn image past the 98% ratio" {
+    local ci_dockerhub_login="$(ci-dockerhub-login-flag)"
+
     local compose='rss_docker-compose.yml'
     cp "$SAMPLES_DIR/compose/hello/docker-compose.yml" "$compose"
 
     rm -rf rss_bundle rss_combine_out.img
-    run torizoncore-builder bundle --bundle-directory rss_bundle "$compose"
+    run torizoncore-builder bundle --bundle-directory rss_bundle "$compose" \
+        ${ci_dockerhub_login:+"--login" "${CI_DOCKER_HUB_PULL_USER}" "${CI_DOCKER_HUB_PULL_PASSWORD}"}
     assert_success
+
+    if [ "${ci_dockerhub_login}" = "1" ]; then
+        assert_output --partial "Attempting to log in to"
+    fi
 
     run torizoncore-builder combine --bundle-directory rss_bundle --force --raw-sector-size 4096 \
                                     $RSS_SYNTH_4K rss_combine_out.img
