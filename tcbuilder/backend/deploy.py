@@ -330,19 +330,21 @@ def grow_last_partition(raw_img, added_size_kb, sector_size, rootfs_partition, *
                 raise TorizonCoreBuilderError(
                     "not enough room to grow the last partition of a 4Kn raw image.")
 
-            name = gfs.part_get_name(dev, partnum)
-            gpt_type = gfs.part_get_gpt_type(dev, partnum)
-            gpt_guid = gfs.part_get_gpt_guid(dev, partnum)
-            gpt_attributes = gfs.part_get_gpt_attributes(dev, partnum)
+            # (name, type, GUID, attributes) - bundled to keep the local-variable
+            # count under pylint's too-many-locals threshold.
+            gpt_identity = (gfs.part_get_name(dev, partnum),
+                            gfs.part_get_gpt_type(dev, partnum),
+                            gfs.part_get_gpt_guid(dev, partnum),
+                            gfs.part_get_gpt_attributes(dev, partnum))
 
             gfs.part_expand_gpt(dev)  # relocate the GPT backup header to the new end
             gfs.part_del(dev, partnum)
             gfs.part_add(dev, "primary", start_sector, end_sector)
 
-            gfs.part_set_name(dev, partnum, name)
-            gfs.part_set_gpt_type(dev, partnum, gpt_type)
-            gfs.part_set_gpt_guid(dev, partnum, gpt_guid)
-            gfs.part_set_gpt_attributes(dev, partnum, gpt_attributes)
+            gfs.part_set_name(dev, partnum, gpt_identity[0])
+            gfs.part_set_gpt_type(dev, partnum, gpt_identity[1])
+            gfs.part_set_gpt_guid(dev, partnum, gpt_identity[2])
+            gfs.part_set_gpt_attributes(dev, partnum, gpt_identity[3])
 
             # Growing only the partition would leave the fs at its old size.
             gfs.resize2fs(rootfs_partition)
