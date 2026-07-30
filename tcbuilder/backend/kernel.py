@@ -10,10 +10,12 @@ import subprocess
 import urllib.request
 
 from tcbuilder.backend import ostree, dt
+# get_kernel_changes_dir is unused here; imported to re-export as kernel.get_kernel_changes_dir.
+# pylint: disable-next=unused-import
 from tcbuilder.backend.common import \
     (download_progress, get_tar_compress_program_options, get_storage_dir,
      set_output_ownership, OSTREE_ROOT_DEPLOY_PATH,
-     get_kernel_changes_dir)  # pylint: disable=unused-import
+     get_kernel_changes_dir)
 from tcbuilder.errors import \
     (TorizonCoreBuilderError, PathNotExistError)
 
