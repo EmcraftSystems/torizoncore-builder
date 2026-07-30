@@ -170,6 +170,44 @@ def get_int_ostree_dir():
     return os.path.join(storage_dir, "ostree-archive")
 
 
+def get_kernel_changes_dir():
+    """Return directory containing kernel related changes."""
+    storage_dir = get_storage_dir()
+    return os.path.join(storage_dir, "kernel")
+
+
+def get_image_bootloader(sysroot_dir):
+    """
+    Get bootloader being used in a given unpacked sysroot
+
+    :param sysroot_dir: sysroot path
+
+    Based on:
+    - https://github.com/ostreedev/ostree/blob/v2024.4/src/libostree/ostree-bootloader-uboot.c#L47
+    - https://github.com/ostreedev/ostree/blob/v2024.4/src/libostree/ostree-bootloader-grub2.c#L73
+    """
+    tentative_uenv_path = os.path.join(sysroot_dir, "boot/loader/uEnv.txt")
+
+    if os.path.exists(tentative_uenv_path):
+        return "U-Boot"
+
+    tentative_grubcfg_path1 = os.path.join(sysroot_dir, "boot/grub/grub.cfg")
+    tentative_grubcfg_path2 = os.path.join(sysroot_dir, "boot/grub2/grub.cfg")
+
+    if (os.path.exists(tentative_grubcfg_path1) or
+            os.path.exists(tentative_grubcfg_path2)):
+        return "GRUB2"
+
+    tentative_efi_dir_path = os.path.join(sysroot_dir, "boot/efi/EFI")
+    if (os.path.exists(tentative_efi_dir_path) and
+            os.path.isdir(tentative_efi_dir_path)):
+        for _, _, files in os.walk(tentative_efi_dir_path):
+            if "grub.cfg" in files:
+                return "GRUB2"
+
+    return "unknown"
+
+
 # Based on this solution: https://stackoverflow.com/a/50690347
 # Usage of Event object to stop thread was based on:
 # https://www.pythontutorial.net/python-concurrency/python-stop-thread/

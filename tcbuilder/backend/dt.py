@@ -11,10 +11,9 @@ import sys
 import re
 
 from tcbuilder.errors import (InvalidDataError, InvalidStateError)
-from tcbuilder.backend.kernel import get_kernel_changes_dir
 from tcbuilder.backend.common import (get_storage_dir, is_file_type_dtb, unpacked_image_type,
-                                      get_src_sysroot_dir)
-from tcbuilder.backend.deploy import get_image_bootloader
+                                      get_src_sysroot_dir, get_kernel_changes_dir,
+                                      get_image_bootloader)
 
 log = logging.getLogger("torizon." + __name__)
 

@@ -12,7 +12,8 @@ import urllib.request
 from tcbuilder.backend import ostree, dt
 from tcbuilder.backend.common import \
     (download_progress, get_tar_compress_program_options, get_storage_dir,
-     set_output_ownership, OSTREE_ROOT_DEPLOY_PATH)
+     set_output_ownership, OSTREE_ROOT_DEPLOY_PATH,
+     get_kernel_changes_dir)  # pylint: disable=unused-import
 from tcbuilder.errors import \
     (TorizonCoreBuilderError, PathNotExistError)
 
@@ -42,12 +43,6 @@ SET_BOOTARGS_CUSTOM2_RE = r'^\s*set_bootargs_custom2='
 # copied from sysroot to the changes directory when preparing the latter for
 # building modules.
 MOD_DIR_COPY_EXCLUDE_SET = {"dtb"}
-
-
-def get_kernel_changes_dir():
-    """Return directory containing kernel related changes."""
-    storage_dir = get_storage_dir()
-    return os.path.join(storage_dir, "kernel")
 
 
 def _kernel_version_from_source(linux_src):
