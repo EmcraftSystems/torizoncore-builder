@@ -27,13 +27,12 @@ build-synth-raw-image() {
     # Round the byte size up to a whole sector - size_kb*1024 is not
     # guaranteed to be a sector multiple (sysroot_kb comes from "du -s",
     # not a fixed constant), and guestfish/qemu expect a sector-aligned
-    # disk. Mirrors grow_last_partition()'s own rounding (deploy.py:337).
+    # disk. Mirrors grow_last_partition()'s own rounding.
     local total_bytes=$(( size_kb * 1024 ))
     total_bytes=$(( (total_bytes + sector - 1) / sector * sector ))
     local total_sectors=$(( total_bytes / sector ))
     # 33 LBAs (512-byte) reserved for the GPT backup header, converted to
-    # this disk's own sector size - grow_last_partition's own calculation
-    # (deploy.py:355).
+    # this disk's own sector size - grow_last_partition's own calculation.
     local gpt_tail=$(( (33 * 512 + sector - 1) / sector ))
     local end_sector=$(( total_sectors - 1 - gpt_tail ))
     local blocksize_opt=""
