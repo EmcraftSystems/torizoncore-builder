@@ -5,44 +5,34 @@ load '../lib/common.bash'
 
 RSS_SYNTH_4K=rss_synth_4k.img
 RSS_SYNTH_512=rss_synth_512.img
-# Measured empirically against the intel-corei7-64 Common Torizon fixture:
-# sysroot + this slack lands the 4Kn image's free root space just inside
-# combine's 98%-full growth path for the "hello" bundle, without landing on
-# the free-space-exactly-zero case (a ZeroDivisionError in combine.py itself).
+# Sized so the 4Kn image's free space lands just inside combine's
+# 98%-full growth path, without hitting free-space-exactly-zero (a
+# ZeroDivisionError in combine.py).
 RSS_SLACK_4K_KB=132400
-# No ratio target for the 512 case (this only proves the synthesis helper
-# itself is sector-size-agnostic) - a generous fixed margin is fine here.
+# No ratio target for the 512 case - only proves the synthesis helper is
+# sector-size-agnostic.
 RSS_SLACK_512_KB=204800
 
-# Builds a synthetic raw disk at $1, at sector size $2 (512 or 4096), sized
-# to at least $3 KB, and copies the already-unpacked $DEFAULT_WIC_IMAGE
-# sysroot into a fresh "otaroot" ext4 partition on it. Mirrors
-# write_rootfs_to_raw_image()'s own primitives (mkfs ext4, set-label
-# otaroot, copy-in) so the disk this test builds is exactly what the code
-# under test later expects to open.
+# Builds a synthetic raw disk mirroring write_rootfs_to_raw_image()'s own
+# primitives, so it's exactly what the code under test expects to open.
 build-synth-raw-image() {
     local out="$1"
     local sector="$2"
     local size_kb="$3"
-    # Round the byte size up to a whole sector - size_kb*1024 is not
-    # guaranteed to be a sector multiple (sysroot_kb comes from "du -s",
-    # not a fixed constant), and guestfish/qemu expect a sector-aligned
+    # Round up to a whole sector - guestfish/qemu need a sector-aligned
     # disk. Mirrors grow_last_partition()'s own rounding.
     local total_bytes=$(( size_kb * 1024 ))
     total_bytes=$(( (total_bytes + sector - 1) / sector * sector ))
     local total_sectors=$(( total_bytes / sector ))
-    # 33 LBAs (512-byte) reserved for the GPT backup header, converted to
-    # this disk's own sector size - grow_last_partition's own calculation.
+    # 33 LBAs reserved for the GPT backup header, converted to this disk's
+    # sector size - grow_last_partition's own calculation.
     local gpt_tail=$(( (33 * 512 + sector - 1) / sector ))
     local end_sector=$(( total_sectors - 1 - gpt_tail ))
     local blocksize_opt=""
     [ "$sector" = "4096" ] && blocksize_opt="--blocksize=4096"
 
-    # copy-in copies its source in as a subdirectory of the destination, so
-    # (unlike copy-out) it cannot flatten /storage/sysroot's own contents to
-    # "/" in one call - copy each top-level entry individually instead,
-    # exactly as write_rootfs_to_raw_image() does with gfs.copy_in(), skipping
-    # "lost+found" the same way.
+    # copy-in can't flatten a directory's contents in one call, so copy each
+    # top-level entry - same as write_rootfs_to_raw_image().
     local copy_in_ops=""
     local entry
     while IFS= read -r entry; do
@@ -89,9 +79,8 @@ setup_file() {
     torizoncore-builder-clean-storage
     torizoncore-builder images --remove-storage unpack $DEFAULT_WIC_IMAGE
 
-    # Size the 4Kn disk tightly to the actual unpacked content, measured
-    # here rather than assumed, so the margin does not silently drift if the
-    # upstream fixture's size changes.
+    # Measure the sysroot size rather than assume it, so the margin doesn't
+    # drift if the fixture changes.
     local sysroot_kb
     sysroot_kb=$(torizoncore-builder-shell "du -s /storage/sysroot" | cut -f1)
 
@@ -155,13 +144,12 @@ teardown() {
 
     read -r part_size_after fs_bytes_after <<< "$(raw-sector-size-4k-fs-stats rss_combine_out.img)"
 
-    # The filesystem must grow along with the partition, not just get resized
-    # on paper.
+    # The filesystem must grow along with the partition.
     run awk -v before="$fs_bytes_before" -v after="$fs_bytes_after" \
         'BEGIN { exit !(after > before * 1.05) }'
     assert_success
 
-    # ...and grow to roughly fill it, at least as well as mkfs's own baseline.
+    # ...and roughly fill it, matching mkfs's own baseline ratio.
     run awk -v ps_before="$part_size_before" -v fs_before="$fs_bytes_before" \
              -v ps_after="$part_size_after" -v fs_after="$fs_bytes_after" \
         'BEGIN { exit !(fs_after / ps_after >= (fs_before / ps_before) * 0.98) }'
