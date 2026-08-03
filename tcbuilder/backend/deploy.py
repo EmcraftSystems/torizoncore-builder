@@ -362,6 +362,11 @@ def grow_last_partition(raw_img, added_size_kb, sector_size, rootfs_partition):
         gfs.part_set_gpt_guid(dev, partnum, gpt_guid)
         gfs.part_set_gpt_attributes(dev, partnum, gpt_attributes)
 
+        # virt-resize grows the filesystem along with the partition on the
+        # default 512-byte path; growing only the partition here would leave
+        # the fs at its pre-grow size and the extra space unusable.
+        gfs.resize2fs(rootfs_partition)
+
 
 # pylint: disable-next=too-many-positional-arguments
 def create_output_raw_image(base_raw_img, output_raw_img, base_rootfs_partition,
