@@ -5,12 +5,12 @@ load '../lib/common.bash'
 
 RSS_SYNTH_4K=rss_synth_4k.img
 RSS_SYNTH_512=rss_synth_512.img
-# Sized so the 4Kn image's free space lands just inside combine's
-# 98%-full growth path, without hitting free-space-exactly-zero (a
-# ZeroDivisionError in combine.py).
+# Lands the 4Kn image's free space just inside combine's 98%-full growth
+# path, short of the free-space-exactly-zero case (a ZeroDivisionError in
+# combine.py itself).
 RSS_SLACK_4K_KB=132400
-# No ratio target for the 512 case - only proves the synthesis helper is
-# sector-size-agnostic.
+# No ratio target for the 512 case (only proves the synthesis helper is
+# sector-size-agnostic) - a generous fixed margin is fine here.
 RSS_SLACK_512_KB=204800
 
 # Builds a synthetic raw disk mirroring write_rootfs_to_raw_image()'s own
@@ -93,7 +93,7 @@ teardown_file() {
 }
 
 teardown() {
-    rm -rf rss_docker-compose.yml rss_bundle rss_combine_out.img
+    rm -rf rss_docker-compose.yml rss_bundle rss_combine_out.img rss_deploy_out.img
 }
 
 @test "raw sector size: images unpack from a 4Kn raw image" {
@@ -115,8 +115,6 @@ teardown() {
                                    --output-raw rss_deploy_out.img branch1
     assert_success
     assert_output --partial "created successfully!"
-
-    rm -rf rss_deploy_out.img
 }
 
 @test "raw sector size: combine grows a 4Kn image past the 98% ratio" {
