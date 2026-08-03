@@ -63,6 +63,22 @@ build-synth-raw-image() {
         umount /"
 }
 
+# Echoes "<partition bytes> <filesystem bytes>" for a 4Kn raw disk.
+raw-sector-size-4k-fs-stats() {
+    local img="$1"
+    torizoncore-builder-shell "guestfish --blocksize=4096 -a $img -- \
+        run : \
+        part-list /dev/sda : \
+        mount /dev/sda1 / : \
+        statvfs /" \
+    | awk '
+        /part_size:/ { part_size = $2 }
+        /blocks:/    { blocks = $2 }
+        /bsize:/     { bsize = $2 }
+        END { print part_size, blocks * bsize }
+    '
+}
+
 setup_file() {
     torizoncore-builder-clean-storage
     torizoncore-builder images --remove-storage unpack $DEFAULT_WIC_IMAGE
@@ -107,6 +123,9 @@ teardown_file() {
 @test "raw sector size: combine grows a 4Kn image past the 98% ratio" {
     local ci_dockerhub_login="$(ci-dockerhub-login-flag)"
 
+    # Read before combine grows anything, to compare against below.
+    read -r part_size_before fs_bytes_before < <(raw-sector-size-4k-fs-stats "$RSS_SYNTH_4K")
+
     local compose='rss_docker-compose.yml'
     cp "$SAMPLES_DIR/compose/hello/docker-compose.yml" "$compose"
 
@@ -123,6 +142,20 @@ teardown_file() {
                                     $RSS_SYNTH_4K rss_combine_out.img
     assert_success
     assert_output --partial "Output disk will be increased"
+
+    read -r part_size_after fs_bytes_after < <(raw-sector-size-4k-fs-stats rss_combine_out.img)
+
+    # The filesystem must grow along with the partition, not just get resized
+    # on paper.
+    run awk -v before="$fs_bytes_before" -v after="$fs_bytes_after" \
+        'BEGIN { exit !(after > before * 1.05) }'
+    assert_success
+
+    # ...and grow to roughly fill it, at least as well as mkfs's own baseline.
+    run awk -v ps_before="$part_size_before" -v fs_before="$fs_bytes_before" \
+             -v ps_after="$part_size_after" -v fs_after="$fs_bytes_after" \
+        'BEGIN { exit !(fs_after / ps_after >= (fs_before / ps_before) * 0.98) }'
+    assert_success
 
     rm -rf "$compose" rss_bundle rss_combine_out.img
 }
