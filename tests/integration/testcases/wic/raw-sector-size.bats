@@ -75,7 +75,13 @@ raw-sector-size-4k-fs-stats() {
         /part_size:/ { part_size = $2 }
         /blocks:/    { blocks = $2 }
         /bsize:/     { bsize = $2 }
-        END { print part_size, blocks * bsize }
+        END {
+            if (part_size == "" || blocks == "" || bsize == "") {
+                print "raw-sector-size-4k-fs-stats: missing field(s) in guestfish output" > "/dev/stderr"
+                exit 1
+            }
+            print part_size, blocks * bsize
+        }
     '
 }
 
@@ -95,6 +101,10 @@ setup_file() {
 
 teardown_file() {
     rm -f "$RSS_SYNTH_4K" "$RSS_SYNTH_512"
+}
+
+teardown() {
+    rm -rf rss_docker-compose.yml rss_bundle rss_combine_out.img
 }
 
 @test "raw sector size: images unpack from a 4Kn raw image" {
@@ -124,7 +134,7 @@ teardown_file() {
     local ci_dockerhub_login="$(ci-dockerhub-login-flag)"
 
     # Read before combine grows anything, to compare against below.
-    read -r part_size_before fs_bytes_before < <(raw-sector-size-4k-fs-stats "$RSS_SYNTH_4K")
+    read -r part_size_before fs_bytes_before <<< "$(raw-sector-size-4k-fs-stats "$RSS_SYNTH_4K")"
 
     local compose='rss_docker-compose.yml'
     cp "$SAMPLES_DIR/compose/hello/docker-compose.yml" "$compose"
@@ -143,7 +153,7 @@ teardown_file() {
     assert_success
     assert_output --partial "Output disk will be increased"
 
-    read -r part_size_after fs_bytes_after < <(raw-sector-size-4k-fs-stats rss_combine_out.img)
+    read -r part_size_after fs_bytes_after <<< "$(raw-sector-size-4k-fs-stats rss_combine_out.img)"
 
     # The filesystem must grow along with the partition, not just get resized
     # on paper.
@@ -156,8 +166,6 @@ teardown_file() {
              -v ps_after="$part_size_after" -v fs_after="$fs_bytes_after" \
         'BEGIN { exit !(fs_after / ps_after >= (fs_before / ps_before) * 0.98) }'
     assert_success
-
-    rm -rf "$compose" rss_bundle rss_combine_out.img
 }
 
 @test "raw sector size: images unpack from a 512 raw image (regression guard on the new synthesis helper)" {
