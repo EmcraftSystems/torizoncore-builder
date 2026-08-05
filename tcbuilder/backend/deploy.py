@@ -349,11 +349,16 @@ def grow_last_partition(raw_img, added_size_kb, sector_size, rootfs_partition, *
             # Growing only the partition would leave the fs at its old size.
             gfs.resize2fs(rootfs_partition)
     except TorizonCoreBuilderError:
-        if delete_on_error:
-            if os.path.isfile(raw_img):  # open_disk_image may have removed it already
-                os.remove(raw_img)
-        else:
-            subprocess.check_output(["truncate", "-s", str(orig_size), raw_img])
+        # A failure here (disk full, permission) must not replace the error above
+        # with a less informative one, nor skip re-raising it.
+        try:
+            if delete_on_error:
+                if os.path.isfile(raw_img):  # open_disk_image may have removed it already
+                    os.remove(raw_img)
+            else:
+                subprocess.check_output(["truncate", "-s", str(orig_size), raw_img])
+        except (OSError, subprocess.CalledProcessError) as cleanup_exc:
+            log.error("Failed to clean up '%s' after a grow failure: %s", raw_img, cleanup_exc)
         raise
 
 
