@@ -293,7 +293,7 @@ def deploy_tezi_image(tezi_dir, src_sysroot_dir, src_ostree_archive_dir,
         copy_signed_artifacts(commit_dir, output_dir)
 
 
-# pylint: disable-next=too-many-positional-arguments
+# pylint: disable-next=too-many-locals,too-many-positional-arguments
 def grow_last_partition(raw_img, added_size_kb, sector_size, rootfs_partition, *,
                         delete_on_error=False):
     """Enlarge a raw image and extend its last partition to fill the new space.
@@ -301,11 +301,11 @@ def grow_last_partition(raw_img, added_size_kb, sector_size, rootfs_partition, *
     For 4Kn images, where virt-resize cannot operate. Preserves the partition's
     GPT identity (name, type, GUID, attributes) so it still boots; the rootfs
     must be the last partition, and the growth must be large enough for a valid
-    partition, both checked before any on-disk mutation. The partition's
-    filesystem is grown to match. On failure, either the whole image is
-    removed (delete_on_error) or the file is restored to its original size,
-    so a mid-way failure never leaves a partially-grown or partially-mutated
-    image behind.
+    partition, both checked before the truncated file's partition table is
+    touched. The partition's filesystem is grown to match. On failure,
+    cleanup is attempted - the whole image is removed (delete_on_error) or
+    the file is restored to its original size - and the original error is
+    still raised even if that cleanup itself fails.
     """
     orig_size = os.path.getsize(raw_img)
     # Round up to a whole sector; a non-sector-multiple size can be rejected at 4Kn.
@@ -330,21 +330,19 @@ def grow_last_partition(raw_img, added_size_kb, sector_size, rootfs_partition, *
                 raise TorizonCoreBuilderError(
                     "not enough room to grow the last partition of a 4Kn raw image.")
 
-            # (name, type, GUID, attributes) - bundled to keep the local-variable
-            # count under pylint's too-many-locals threshold.
-            gpt_identity = (gfs.part_get_name(dev, partnum),
-                            gfs.part_get_gpt_type(dev, partnum),
-                            gfs.part_get_gpt_guid(dev, partnum),
-                            gfs.part_get_gpt_attributes(dev, partnum))
+            name = gfs.part_get_name(dev, partnum)
+            gpt_type = gfs.part_get_gpt_type(dev, partnum)
+            gpt_guid = gfs.part_get_gpt_guid(dev, partnum)
+            gpt_attributes = gfs.part_get_gpt_attributes(dev, partnum)
 
             gfs.part_expand_gpt(dev)  # relocate the GPT backup header to the new end
             gfs.part_del(dev, partnum)
             gfs.part_add(dev, "primary", start_sector, end_sector)
 
-            gfs.part_set_name(dev, partnum, gpt_identity[0])
-            gfs.part_set_gpt_type(dev, partnum, gpt_identity[1])
-            gfs.part_set_gpt_guid(dev, partnum, gpt_identity[2])
-            gfs.part_set_gpt_attributes(dev, partnum, gpt_identity[3])
+            gfs.part_set_name(dev, partnum, name)
+            gfs.part_set_gpt_type(dev, partnum, gpt_type)
+            gfs.part_set_gpt_guid(dev, partnum, gpt_guid)
+            gfs.part_set_gpt_attributes(dev, partnum, gpt_attributes)
 
             # Growing only the partition would leave the fs at its old size.
             gfs.resize2fs(rootfs_partition)
