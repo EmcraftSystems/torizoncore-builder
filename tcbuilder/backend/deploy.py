@@ -344,13 +344,23 @@ def grow_last_partition(raw_img, added_size_kb, sector_size, rootfs_partition, *
             gfs.part_del(dev, partnum)
             gfs.part_add(dev, "primary", start_sector, end_sector)
 
-            gfs.part_set_name(dev, partnum, name)
-            gfs.part_set_gpt_type(dev, partnum, gpt_type)
-            gfs.part_set_gpt_guid(dev, partnum, gpt_guid)
-            gfs.part_set_gpt_attributes(dev, partnum, gpt_attributes)
+            # part_add() may reuse a different free slot than the one just deleted
+            # if a lower gap exists; re-derive the number from the start sector.
+            try:
+                new_partnum = next(p["part_num"] for p in gfs.part_list(dev)
+                                   if p["part_start"] // sector_size == start_sector)
+            except StopIteration:
+                raise TorizonCoreBuilderError(
+                    "could not locate the regrown partition after part_add().") from None
+            new_rootfs_partition = f"{dev}{new_partnum}"
+            gfs.part_set_name(dev, new_partnum, name)
+            gfs.part_set_gpt_type(dev, new_partnum, gpt_type)
+            gfs.part_set_gpt_guid(dev, new_partnum, gpt_guid)
+            gfs.part_set_gpt_attributes(dev, new_partnum, gpt_attributes)
 
-            # Growing only the partition would leave the fs at its old size.
-            gfs.resize2fs(rootfs_partition)
+            # Growing only the partition would leave the fs at its old size; the
+            # original rootfs_partition may no longer exist if renumbered above.
+            gfs.resize2fs(new_rootfs_partition)
 
         if tmp_img:
             os.replace(tmp_img, raw_img)
