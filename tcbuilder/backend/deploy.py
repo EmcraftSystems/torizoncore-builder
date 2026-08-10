@@ -298,26 +298,31 @@ def grow_last_partition(raw_img, added_size_kb, sector_size, rootfs_partition, *
                         delete_on_error=False):
     """Enlarge a raw image and extend its last partition to fill the new space.
 
-    For 4Kn images, where virt-resize cannot operate. Preserves the partition's
-    GPT identity (name, type, GUID, attributes) so it still boots; the rootfs
-    must be the last partition, and the growth must be large enough for a valid
-    partition, both checked before the truncated file's partition table is
-    touched. The partition's filesystem is grown to match. On failure,
-    cleanup is attempted - the whole image is removed (delete_on_error) or
-    the file is restored to its original size - and the original error is
-    still raised even if that cleanup itself fails.
+    For 4Kn images, where virt-resize cannot operate. delete_on_error=True
+    mutates raw_img directly and deletes it on failure; otherwise raw_img is
+    the caller's only copy, so every mutation runs against a temporary
+    sibling copy instead, swapped into place only on full success.
     """
-    orig_size = os.path.getsize(raw_img)
-    # Round up to a whole sector; a non-sector-multiple size can be rejected at 4Kn.
-    new_size = orig_size + int(added_size_kb) * 1024
-    new_size = (new_size + sector_size - 1) // sector_size * sector_size
-    subprocess.check_output(["truncate", "-s", str(new_size), raw_img])
+    work_img = raw_img
+    tmp_img = None
 
     try:
-        with open_disk_image(raw_img, delete_on_error=delete_on_error,
+        if not delete_on_error:
+            tmp_img = raw_img + ".grow.tmp"
+            shutil.copyfile(raw_img, tmp_img)
+            work_img = tmp_img
+
+        orig_size = os.path.getsize(work_img)
+        # Round up to a whole sector; a non-sector-multiple size can be rejected at 4Kn.
+        new_size = orig_size + int(added_size_kb) * 1024
+        new_size = (new_size + sector_size - 1) // sector_size * sector_size
+        subprocess.check_output(["truncate", "-s", str(new_size), work_img])
+
+        with open_disk_image(work_img, delete_on_error=True,
                              sector_size=sector_size) as gfs:
             dev = "/dev/sda"
-            partnum = len(gfs.list_partitions())
+            partitions = gfs.list_partitions()
+            partnum = gfs.part_to_partnum(partitions[-1])
             if gfs.part_to_partnum(rootfs_partition) != partnum:
                 raise TorizonCoreBuilderError(
                     "the rootfs must be the last partition to grow a 4Kn raw image.")
@@ -346,17 +351,21 @@ def grow_last_partition(raw_img, added_size_kb, sector_size, rootfs_partition, *
 
             # Growing only the partition would leave the fs at its old size.
             gfs.resize2fs(rootfs_partition)
-    except TorizonCoreBuilderError:
-        # A failure here (disk full, permission) must not replace the error above
-        # with a less informative one, nor skip re-raising it.
+
+        if tmp_img:
+            os.replace(tmp_img, raw_img)
+    except (TorizonCoreBuilderError, OSError, subprocess.CalledProcessError):
+        # Clean up the disposable file only: tmp_img if it exists (even a
+        # failed copy or swap can leave one), else raw_img when
+        # delete_on_error.
+        cleanup_target = tmp_img if tmp_img else (raw_img if delete_on_error else None)
         try:
-            if delete_on_error:
-                if os.path.isfile(raw_img):  # open_disk_image may have removed it already
-                    os.remove(raw_img)
-            else:
-                subprocess.check_output(["truncate", "-s", str(orig_size), raw_img])
-        except (OSError, subprocess.CalledProcessError) as cleanup_exc:
-            log.error("Failed to clean up '%s' after a grow failure: %s", raw_img, cleanup_exc)
+            # open_disk_image may have removed it already.
+            if cleanup_target and os.path.isfile(cleanup_target):
+                os.remove(cleanup_target)
+        except OSError as cleanup_exc:
+            log.error("Failed to clean up '%s' after a grow failure: %s",
+                     cleanup_target, cleanup_exc)
         raise
 
 
