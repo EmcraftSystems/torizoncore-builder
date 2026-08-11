@@ -7,6 +7,7 @@ import logging
 import os
 import shutil
 import subprocess
+import tempfile
 import threading
 import shlex
 
@@ -308,8 +309,12 @@ def grow_last_partition(raw_img, added_size_kb, sector_size, rootfs_partition, *
 
     try:
         if not delete_on_error:
-            tmp_img = raw_img + ".grow.tmp"
-            shutil.copyfile(raw_img, tmp_img)
+            tmp_fd, tmp_img = tempfile.mkstemp(
+                prefix=f"{os.path.basename(raw_img)}.",
+                suffix=".grow.tmp",
+                dir=os.path.dirname(os.path.abspath(raw_img)))
+            os.close(tmp_fd)
+            shutil.copy2(raw_img, tmp_img)
             work_img = tmp_img
 
         orig_size = os.path.getsize(work_img)
@@ -321,12 +326,13 @@ def grow_last_partition(raw_img, added_size_kb, sector_size, rootfs_partition, *
         with open_disk_image(work_img, delete_on_error=True,
                              sector_size=sector_size) as gfs:
             dev = "/dev/sda"
-            partitions = gfs.list_partitions()
-            partnum = gfs.part_to_partnum(partitions[-1])
+            last_partition = max(
+                gfs.part_list(dev), key=lambda partition: partition["part_start"])
+            partnum = last_partition["part_num"]
             if gfs.part_to_partnum(rootfs_partition) != partnum:
                 raise TorizonCoreBuilderError(
                     "the rootfs must be the last partition to grow a 4Kn raw image.")
-            start_sector = gfs.part_list(dev)[-1]["part_start"] // sector_size
+            start_sector = last_partition["part_start"] // sector_size
 
             # Stop short of the disk end to clear the GPT backup (33 LBAs of 512 B).
             gpt_tail = (33 * 512 + sector_size - 1) // sector_size
