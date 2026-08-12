@@ -294,7 +294,7 @@ def deploy_tezi_image(tezi_dir, src_sysroot_dir, src_ostree_archive_dir,
         copy_signed_artifacts(commit_dir, output_dir)
 
 
-# pylint: disable-next=too-many-locals,too-many-positional-arguments
+# pylint: disable-next=too-many-locals
 def grow_last_partition(raw_img, added_size_kb, sector_size, rootfs_partition, *,
                         delete_on_error=False):
     """Enlarge a raw image and extend its last partition to fill the new space.
@@ -370,7 +370,7 @@ def grow_last_partition(raw_img, added_size_kb, sector_size, rootfs_partition, *
 
         if tmp_img:
             os.replace(tmp_img, raw_img)
-    except (TorizonCoreBuilderError, OSError, subprocess.CalledProcessError):
+    except BaseException:  # always re-raises; must also clean up on KeyboardInterrupt/SystemExit
         # Clean up the disposable file only: tmp_img if it exists (even a
         # failed copy or swap can leave one), else raw_img when
         # delete_on_error.
