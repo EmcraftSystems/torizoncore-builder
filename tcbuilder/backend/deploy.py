@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import shutil
+import struct
 import subprocess
 import tempfile
 import threading
@@ -334,9 +335,17 @@ def grow_last_partition(raw_img, added_size_kb, sector_size, rootfs_partition, *
                     "the rootfs must be the last partition to grow a 4Kn raw image.")
             start_sector = last_partition["part_start"] // sector_size
 
-            # Stop short of the disk end to clear the GPT backup (33 LBAs of 512 B).
-            gpt_tail = (33 * 512 + sector_size - 1) // sector_size
-            end_sector = new_size // sector_size - 1 - gpt_tail
+            gfs.part_expand_gpt(dev)  # relocate the GPT backup header to the new end
+
+            # LastUsableLBA (offset 48, 8-byte LE) already reflects the real
+            # backup reservation post-expand; read it instead of re-deriving it.
+            header = gfs.pread_device(dev, 56, sector_size)
+            if len(header) != 56 or header[:8] != b"EFI PART":
+                raise TorizonCoreBuilderError(
+                    f"could not read the GPT header at LBA 1 for a "
+                    f"{sector_size}-byte sector size after expanding the "
+                    "partition table.")
+            end_sector = struct.unpack("<Q", header[48:56])[0]
             if end_sector <= start_sector:
                 raise TorizonCoreBuilderError(
                     "not enough room to grow the last partition of a 4Kn raw image.")
@@ -346,7 +355,6 @@ def grow_last_partition(raw_img, added_size_kb, sector_size, rootfs_partition, *
             gpt_guid = gfs.part_get_gpt_guid(dev, partnum)
             gpt_attributes = gfs.part_get_gpt_attributes(dev, partnum)
 
-            gfs.part_expand_gpt(dev)  # relocate the GPT backup header to the new end
             gfs.part_del(dev, partnum)
             gfs.part_add(dev, "primary", start_sector, end_sector)
 
