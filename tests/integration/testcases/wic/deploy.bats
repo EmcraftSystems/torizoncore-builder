@@ -123,3 +123,17 @@ teardown() {
     run device-shell-root /usr/sbin/secret_of_life
     assert_failure 42
 }
+
+# A real non-default GPT table can't be synthesized here (sgdisk/gdisk
+# can't be told a plain file's 4Kn sector size), so mock the header read.
+@test "deploy: grow_last_partition() takes end_sector verbatim from LastUsableLBA" {
+    # grow_last_partition() with delete_on_error=True mutates in place, and
+    # $RSS_SYNTH_4K is shared with every other test in this file - copy it.
+    cp "$RSS_SYNTH_4K" grow-lba-mock.img
+    cp "$BATS_TEST_DIRNAME/../lib/grow-lba-mock.py" .
+
+    run torizoncore-builder-shell "PYTHONPATH=/builder python3 /workdir/grow-lba-mock.py"
+    assert_success
+    assert_output --partial "OK: grew to mocked"
+    rm -f grow-lba-mock.py grow-lba-mock.img
+}
