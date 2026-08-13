@@ -9,13 +9,11 @@ import shutil
 import subprocess
 import urllib.request
 
-from tcbuilder.backend import ostree, dt
-# get_kernel_changes_dir is unused here; imported to re-export as kernel.get_kernel_changes_dir.
-# pylint: disable-next=unused-import
+from tcbuilder.backend import ostree, uenv
 from tcbuilder.backend.common import \
     (download_progress, get_tar_compress_program_options, get_storage_dir,
      set_output_ownership, OSTREE_ROOT_DEPLOY_PATH,
-     get_kernel_changes_dir)
+     get_changes_dir, KERNEL_CHANGES_SUBDIR)
 from tcbuilder.errors import \
     (TorizonCoreBuilderError, PathNotExistError)
 
@@ -45,6 +43,11 @@ SET_BOOTARGS_CUSTOM2_RE = r'^\s*set_bootargs_custom2='
 # copied from sysroot to the changes directory when preparing the latter for
 # building modules.
 MOD_DIR_COPY_EXCLUDE_SET = {"dtb"}
+
+
+def get_kernel_changes_dir():
+    """Return directory containing kernel related changes."""
+    return get_changes_dir(KERNEL_CHANGES_SUBDIR)
 
 
 def _kernel_version_from_source(linux_src):
@@ -363,7 +366,7 @@ def copy_kernel_to_changes_dir(changes_dir, *, basename=None):
 def get_supported_bootargs_methods():
     """Determine the set of bootargs passing methods supported by the current image."""
 
-    uenv_txt_path = dt.get_current_uenv_txt_path()
+    uenv_txt_path = uenv.get_current_uenv_txt_path()
     method_re = {
         "overlay": re.compile(SET_BOOTARGS_CUSTOM_RE),
         "uenv": re.compile(SET_BOOTARGS_CUSTOM2_RE)

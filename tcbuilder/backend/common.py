@@ -170,10 +170,14 @@ def get_int_ostree_dir():
     return os.path.join(storage_dir, "ostree-archive")
 
 
-def get_kernel_changes_dir():
-    """Return directory containing kernel related changes."""
+DT_CHANGES_SUBDIR = "dt"
+KERNEL_CHANGES_SUBDIR = "kernel"
+
+
+def get_changes_dir(subdir):
+    """Get the path to a named customization changes directory."""
     storage_dir = get_storage_dir()
-    return os.path.join(storage_dir, "kernel")
+    return os.path.join(storage_dir, subdir)
 
 
 def get_image_bootloader(sysroot_dir):
