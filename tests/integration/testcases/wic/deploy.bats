@@ -86,6 +86,42 @@ teardown() {
 #     cd .. && rm -rf $ROOTFS my_new_image
 }
 
+@test "deploy: deploy changes to a WIC image already sized past the growth threshold" {
+    # Reproduces a base image already >= IMAGE_OVERHEAD_FACTOR (2.3,
+    # deploy.py) times its own rootfs content - as any modestly-provisioned
+    # production image is - with a tiny overlay applied. out_size_kb then
+    # comes out <= base_img_size_kb, so create_output_raw_image() must take
+    # the "same size" branch and must not invoke virt-resize --expand, which
+    # refuses to run without genuine surplus space even for a zero-growth
+    # request.
+    local synth=rss_tight_512.img
+    rm -f "$synth" tight_deploy_out.img
+
+    torizoncore-builder-clean-storage
+    torizoncore-builder images --remove-storage unpack $DEFAULT_WIC_IMAGE
+    local sysroot_kb
+    sysroot_kb=$(torizoncore-builder-shell "du -s /storage/sysroot" | cut -f1)
+    # 2.35x comfortably clears the 2.3x factor regardless of the base
+    # image's exact content, so this doesn't drift if it changes.
+    build-synth-raw-image "$synth" 512 $(( sysroot_kb * 235 / 100 ))
+
+    torizoncore-builder-clean-storage
+    torizoncore-builder images --remove-storage unpack "$synth"
+    torizoncore-builder union --changes-directory $SAMPLES_DIR/changes branch1
+
+    run torizoncore-builder deploy --base-raw "$synth" --output-raw tight_deploy_out.img branch1
+    assert_success
+    assert_output --partial "Output image will have the same size as the base one."
+    refute_output --partial "Starting virt-resize"
+
+    local base_bytes out_bytes
+    base_bytes=$(stat -c%s "$synth")
+    out_bytes=$(stat -c%s tight_deploy_out.img)
+    [ "$base_bytes" -eq "$out_bytes" ]
+
+    rm -f "$synth" tight_deploy_out.img
+}
+
 # bats test_tags=requires-device
 @test "deploy: deploy changes to device without images unpack" {
     requires-device
