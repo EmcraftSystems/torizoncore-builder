@@ -435,7 +435,12 @@ def create_output_raw_image(base_raw_img, output_raw_img, base_rootfs_partition,
         log.info(f"Size of output image will be: {out_size_kb/1024/1024:.2f} GiB")
         subprocess.check_output(["truncate", "-s", f"+{int(added_size_kb)}K", output_raw_img])
     else:
+        # Nothing to grow into, and virt-resize --expand refuses to run at
+        # all without genuine surplus space to expand into (even a few KB),
+        # so it cannot be used here as a no-op resize. The plain copy above
+        # is already the correct output in this case.
         log.info("Output image will have the same size as the base one.")
+        return
 
     # Using virt-resize, copy all base image partitions to output image,
     # except base_rootfs_partition:
